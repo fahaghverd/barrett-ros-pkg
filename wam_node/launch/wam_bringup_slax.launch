@@ -1,0 +1,7 @@
+<!-- piwowarc 17/06/21 -->
+<launch>
+	<env name="BARRETT_CONFIG_FILE" value="/home/wam/catkin_ws/src/barrett-ros-pkg/wam_node/launch/config/default_can1.conf"/
+	<group ns="slax">
+		<node pkg="wam_node" type="wam_node" name="slax" output="screen"/>
+	</group>
+</launch>
