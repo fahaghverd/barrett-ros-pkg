@@ -1,0 +1,77 @@
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv
+END
+Hold.srv
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/Hold.srv
+END
+BHandFingerPos.srv
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/BHandFingerPos.srv
+END
+OrtnMove.srv
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/OrtnMove.srv
+END
+JointMove.srv
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/JointMove.srv
+END
+BHandGraspPos.srv
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/BHandGraspPos.srv
+END
+BHandSpreadPos.srv
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/BHandSpreadPos.srv
+END
+PoseMove.srv
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/PoseMove.srv
+END
+BHandFingerVel.srv
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/BHandFingerVel.srv
+END
+BHandGraspVel.srv
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/BHandGraspVel.srv
+END
+BHandSpreadVel.srv
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/BHandSpreadVel.srv
+END
+CartPosMove.srv
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/CartPosMove.srv
+END
+GravityComp.srv
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_srvs/srv/GravityComp.srv
+END

@@ -1,0 +1,4 @@
+float32[] joint_position
+---
+float32[] cart_position
+float32[] quaternion

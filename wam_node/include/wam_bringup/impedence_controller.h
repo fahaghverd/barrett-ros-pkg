@@ -27,8 +27,8 @@
 #include <cstdlib>  // For mkstmp()
 #include <cstdio>  // For remove()
 #include <barrett/log.h>
-#include <Eigen/Dense>
-#include <Eigen/Core>
+#include <eigen3/Eigen/Dense>
+#include <eigen3/Eigen/Core>
 //#define BARRETT_SMF_VALIDATE_ARGS
 #include <barrett/standard_main_function.h>
 #include <barrett/detail/stl_utils.h>
@@ -47,18 +47,20 @@ class ImpedanceController6DOF : public systems::System, public KinematicsInput<D
 	public:
 		Input<Eigen::Quaterniond> OrnReferenceInput;
 		Input<Eigen::Quaterniond> OrnFeedbackInput;
+
 		Input<cp_type> OrnKpGains;
 		Input<cp_type> OrnKdGains;
 
 		Input<cp_type> CpInput;            // cart pos. input
 		Input<cv_type> CvInput;            // cart vel. input
-		// Input<Eigen::Quaterniond> OrnInput;   // orientation input (quaternion)
+
 		Input<cp_type> KxInput; // Kx - cart. stiffness { Kx, Ky, Kz }
 		Input<cp_type> DxInput; // Dx - cart. damping   { Dx, Dy, Dz }
-		// Input<cp_type> KthInput; // Kth - rot.  stiffness { Ktx , Kty ,Ktz }
 		Input<cp_type> XdInput;   // Xd - center of spring [xd , yd , zd ] commanded cart pos. : fixed for static spring
+
 		// Input<Eigen::Quaterniond> ThetadInput; // Thetad - center of rotational spring [ ThetaXd , ThetaYd , ThetaZd ]
-		//Input<cv_type> commandedCvInput;   // commanded cart vel. : set to zero for now
+		// Input<cv_type> commandedCvInput;   // commanded cart vel. : set to zero for now
+		// Input<cp_type> KthInput; // Kth - rot.  stiffness { Ktx , Kty ,Ktz }
 
 	// IO  (outputs)
 	public:
@@ -84,10 +86,8 @@ class ImpedanceController6DOF : public systems::System, public KinematicsInput<D
 				CFOutput(this, &cfOutputValue), CTOutput(this, &ctOutputValue)
 		{
 		}
-		virtual ~ImpedanceController6DOF()
-		{
-			this->mandatoryCleanUp();
-		}
+		virtual ~ImpedanceController6DOF(){	this->mandatoryCleanUp();}
+
 	protected:
 		cf_type cf;
 		ct_type ct;
@@ -104,7 +104,7 @@ class ImpedanceController6DOF : public systems::System, public KinematicsInput<D
 		cv_type Vcurr;
 		Eigen::Quaterniond OrnCurr;
 
-		Eigen::AngleAxisd error;
+		Eigen::AngleAxisd OrnError;
 		cp_type tempVect;
 		cp_type tempVect2;
 		cp_type errorVect;
@@ -125,12 +125,10 @@ class ImpedanceController6DOF : public systems::System, public KinematicsInput<D
 		for (int i = 0; i<3 ; i++) {
 			cf[i] = (Xd[i] -  Xcurr[i]) * Kx[i] + (0.0 - Vcurr[i]) * Dx[i];
 		}
-		computedF =  cf;
-		computedT =  ct;
-		cart_pos = Xcurr;
 		
-		error = this->OrnFeedbackInput.getValue() * this->OrnReferenceInput.getValue().inverse();  // but CD's math (that works, BTW) does it this way
-		double angle = error.angle();
+		OrnError = this->OrnFeedbackInput.getValue() * this->OrnReferenceInput.getValue().inverse();  // but CD's math (that works, BTW) does it this way
+		double angle = OrnError.angle();
+		
 		// TODO(dc): I looked into Eigen's implementation and noticed that angle will always be between 0 and 2*pi. We should test for this so if Eigen changes, we notice.
 		if (angle > M_PI) {
 			angle -= 2.0*M_PI;
@@ -140,7 +138,7 @@ class ImpedanceController6DOF : public systems::System, public KinematicsInput<D
 			ct.setZero();
 		} else {
 		    tempVect = OrnKx ;				// copy the ProportiocalGains
-		    errorVect = error.axis() * angle ;
+		    errorVect = OrnError.axis() * angle ;
 		    gsl_vector_mul (tempVect.asGslType() , errorVect.asGslType()  ) ; 	// tempVect <- tempVect * errorVect
 		    ct = this->OrnReferenceInput.getValue().inverse() * ( tempVect );
 
@@ -152,31 +150,13 @@ class ImpedanceController6DOF : public systems::System, public KinematicsInput<D
 //		ct -= DerivativeGains.dot( this->kinInput.getValue().impl->tool_velocity_angular ) ;
 //		gsl_blas_daxpy( -kd, this->kinInput.getValue().impl->tool_velocity_angular, ct.asGslType());
 
+		computedF =  cf;
+		computedT =  ct;
+		cart_pos = Xcurr;
+
 		this->ctOutputValue->setData(&ct);
 		this->cfOutputValue->setData(&cf);
-//		error = this->referenceInput.getValue() * this->feedbackInput.getValue().inverse();  // I think it should be this way
-		// error = OrnXd * OrnCurr.inverse();  // but CD's math (that works, BTW) does it this way
 
-		// double angle = error.angle();
-		// // TODO(dc): I looked into Eigen's implementation and noticed that angle will always be between 0 and 2*pi. We should test for this so if Eigen changes, we notice.
-		// if (angle > M_PI) {
-		// 	angle -= 2.0*M_PI;
-		// }
-
-		// if (math::abs(angle) > 3.13) {	// a little dead-zone near the discontinuity at +/-180 degrees
-		// 	ct.setZero();
-		// } else {
-		//     errorVect = error.axis() * angle;
-		//     gsl_vector_mul(OrnKx.asGslType(), errorVect.asGslType()); 	// OrnKx <- OrnKx * errorVect
-		//     ct = OrnCurr.inverse() * (OrnKx);
-
-		// }
-		// gsl_vector_mul(OrnDx.asGslType(), this->kinInput.getValue().impl->tool_velocity_angular);
-		// ct -= OrnDx ;
-//		ct -= DerivativeGains.dot( this->kinInput.getValue().impl->tool_velocity_angular ) ;
-//		gsl_blas_daxpy( -kd, this->kinInput.getValue().impl->tool_velocity_angular, ct.asGslType());
-		// cfOutputValue->setData(&cf);
-		// ctOutputValue->setData(&ct);
 		// //-----------------------------------------------------------------------------------------------
 		// // convert Current Quaternion to Euler Angles -----------------------------------------------------------
 		// pi = 3.14159265359;

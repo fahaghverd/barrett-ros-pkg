@@ -1,37 +1,39 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(wam_msgs)
 
-find_package(catkin REQUIRED COMPONENTS
-  message_generation
-  geometry_msgs
-  sensor_msgs
-  std_msgs
-)
+## Find catkin macros and libraries
+find_package(catkin REQUIRED COMPONENTS message_generation genmsg)
 
-add_message_files(DIRECTORY msg FILES
+#######################################
+## Declare ROS messages and services ##
+#######################################
+
+## Generate messages in the 'msg' folder
+add_message_files(
+  FILES
   RTCartPos.msg
-  FtTorques.msg
-  RTOrtnPos.msg
-  RTOrtnVel.msg
-  RTPose.msg
-  tactilePressure.msg
-  tactilePressureArray.msg
+  RTVelocity.msg
   RTCartVel.msg
   RTJointPos.msg
   RTJointVel.msg
-  EndpointState.msg
+  RTOrtn.msg
+  RTOrtnPos.msg
+  RTOrtnVel.msg
+  RTToolInfo.msg
+  RTPose.msg
+  MatrixMN.msg
+  RTCartForce.msg
 )
 
-generate_messages(DEPENDENCIES
-  geometry_msgs
-  sensor_msgs
-  std_msgs
+## Generate added messages and services with any dependencies listed here
+generate_messages(
+  DEPENDENCIES
 )
 
-catkin_package(CATKIN_DEPENDS 
-  message_runtime
-  geometry_msgs
-  sensor_msgs
-  std_msgs
+###################################
+## catkin specific configuration ##
+###################################
+## DEPENDS: system dependencies of this project that dependent projects also need
+catkin_package(
+  CATKIN_DEPENDS message_runtime
 )
-

@@ -23,8 +23,8 @@
 #include <cstdlib>  // For std::atexit()
 #include <barrett/os.h>  // For btsleep()
 #include <barrett/math.h>  // For barrett::math::saturate()
-#include <Eigen/Dense>
-#include <Eigen/Core>
+#include <eigen3/Eigen/Dense>
+#include <eigen3/Eigen/Core>
 #include <barrett/standard_main_function.h>
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_blas.h>

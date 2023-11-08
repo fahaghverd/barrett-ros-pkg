@@ -17,7 +17,7 @@
 #include <boost/tuple/tuple_comparison.hpp>
 #include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
-#include <Eigen/Geometry>
+#include <eigen3/Eigen/Geometry>
 
 
 #include "ros/ros.h"

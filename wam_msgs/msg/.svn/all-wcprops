@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg
+END
+RTOrtnPos.msg
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTOrtnPos.msg
+END
+RTJointPos.msg
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTJointPos.msg
+END
+RTPose.msg
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTPose.msg
+END
+RTOrtnVel.msg
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTOrtnVel.msg
+END
+RTJointVel.msg
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTJointVel.msg
+END
+RTCartPos.msg
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTCartPos.msg
+END
+RTCartVel.msg
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/barrett-ros-pkg/!svn/ver/15/trunk/wam_common/wam_msgs/msg/RTCartVel.msg
+END

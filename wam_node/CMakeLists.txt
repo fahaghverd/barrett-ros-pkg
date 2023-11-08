@@ -40,6 +40,6 @@ catkin_package(
   wam_srvs
 )
 
-add_executable(wam_node src/wam_node.cpp)
-add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(wam_node ${catkin_LIBRARIES} ${BARRETT_LIBRARIES})
+#add_executable(wam_node src/wam_node.cpp)
+#add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(wam_node ${catkin_LIBRARIES} ${BARRETT_LIBRARIES})

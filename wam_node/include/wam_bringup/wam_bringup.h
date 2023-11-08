@@ -50,7 +50,7 @@
 #include <boost/tuple/tuple_comparison.hpp>
 #include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
-#include <Eigen/Geometry>
+#include <eigen3/Eigen/Geometry>
 
 #include "ros/ros.h"
 #include "tf/transform_datatypes.h"
@@ -396,15 +396,15 @@ template<size_t DOF>
 			comp.setKp(3e3);
 			comp.setKd(3e1);
 		}
+		
 		void init(ProductManager& pm);
         std::string read_line();
         void write(std::string buf) {
             //write command out to serial port
             boost::asio::write(port, boost::asio::buffer((buf+"\r").c_str(), buf.size() + 1));
         }
-		~WamBringup()
-		{
-		}
+		~WamBringup(){}
+
 		bool jpPIDControl(wam_srvs::JP_PID::Request &req, wam_srvs::JP_PID::Response &res);
 		bool jvPIDControl(wam_srvs::JV_PID::Request &req, wam_srvs::JV_PID::Response &res);
 		bool tpPIDControl(wam_srvs::TP_PID::Request &req, wam_srvs::TP_PID::Response &res);

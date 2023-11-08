@@ -13,7 +13,7 @@
 #include <cassert>
 #include <vector>
 
-#include <Eigen/Core>
+#include <eigen3/Eigen/Core>
 #include <barrett/systems.h>
 #include <barrett/detail/ca_macro.h>
 #include <barrett/units.h>
