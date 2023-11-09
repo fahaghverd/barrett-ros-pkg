@@ -57,6 +57,7 @@ void WamNode<DOF>::init(ProductManager& pm) {
 
     // last_cart_vel_msg_time = ros::Time::now();
 
+    /*
     // SETUP BHAND
     ROS_INFO("Openning BHand on serial port %s", BHAND_PORT.c_str());
     // Set the settings
@@ -93,6 +94,7 @@ void WamNode<DOF>::init(ProductManager& pm) {
     bhand_joint_state.position.resize(8);
     bhand_joint_state_pub = nb_.advertise < sensor_msgs::JointState > ("joint_states", 1);
     // END BHAND SETUP
+    */
 
     max_base_torque << 0.0, 0.0, 0.0;
     max_base_force << 6.0, 6.0, 6.0;
@@ -106,6 +108,9 @@ void WamNode<DOF>::init(ProductManager& pm) {
     SpringSetPoint = wam.getToolPosition();
     OrnSpringSetPoint = wam.getToolOrientation(); 
     wam.gravityCompensate(true); 
+
+   
+    
 
     //Contace Force Estimation
     
@@ -204,6 +209,7 @@ bool WamNode<DOF>::disconnectSystems(std_srvs::Empty::Request &req, std_srvs::Em
     return true;
 }
 
+/*
 // BHAND FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////
 template<size_t DOF>
 bool WamNode<DOF>::handInitialize(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
@@ -290,12 +296,14 @@ bool WamNode<DOF>::handPinchPos(wam_srvs::BHandPinchPos::Request &req, wam_srvs:
     write(bhand_command);
     return true;
 }
+*/
 //Function to control a BarrettHand Finger Velocity
 /* If finger velocity value is positive then closeing velocities are set for all fingers.
 * If all velocities are negative then finger opening velocities are set.
 *
 * Default is 100 for all finger opening and closing
 */
+/*
 template<size_t DOF>
 bool WamNode<DOF>::handFingerVel(wam_srvs::BHandFingerVel::Request &req, wam_srvs::BHandFingerVel::Response &res)
 {
@@ -314,11 +322,12 @@ bool WamNode<DOF>::handFingerVel(wam_srvs::BHandFingerVel::Request &req, wam_srv
     write(bhand_command);
     return true;
 }
-
+*/
 //Function to control a BarrettHand Grasp Velocity
 /*
 * Default grasp velocities are 100 for MCV and MOV
 */
+/*
 template<size_t DOF>
 bool WamNode<DOF>::handGraspVel(wam_srvs::BHandGraspVel::Request &req, wam_srvs::BHandGraspVel::Response &res)
 {
@@ -328,11 +337,12 @@ bool WamNode<DOF>::handGraspVel(wam_srvs::BHandGraspVel::Request &req, wam_srvs:
     write(bhand_command);
     return true;
 }
-
+*/
 //Function to control a BarrettHand Spread Velocity
 /*
 * Default for MCV and MOV for spread is 60
 */
+/*
 template<size_t DOF>
 bool WamNode<DOF>::handSpreadVel(wam_srvs::BHandSpreadVel::Request &req, wam_srvs::BHandSpreadVel::Response &res)
 {
@@ -362,6 +372,7 @@ std::string WamNode<DOF>::read_line()
         }
     }
 }
+*/
 
 // WAM ARM FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////
 /*
@@ -635,8 +646,8 @@ template<size_t DOF>
 bool WamNode<DOF>::goHome(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res) {
     ROS_INFO("Returning to Home Position");
     // open grasp and close spread before sending home
-    write("GO");
-    write("SC");
+    // write("GO");
+    // write("SC");
     for (size_t i = 0; i < DOF; i++) {
         jp_cmd[i] = 0.0;
     }
@@ -878,28 +889,40 @@ bool WamNode<DOF>::cartMove(wam_srvs::CartPosMove::Request &req, wam_srvs::CartP
     return true;
 }
 
+
 template<size_t DOF>
 bool WamNode<DOF>::staticForceEstimation(wam_srvs::StaticForceEstimationwithG::Request &req, wam_srvs::StaticForceEstimationwithG::Response &res)
-{
+{   
+    std::string path = "/home";
+    systems::TupleGrouper<double, cf_type> cfLogTg;
+    double T_s = mypm->getExecutionManager()->getPeriod();
+    systems::PeriodicDataLogger<cf_sample_type> cfLogger(mypm->getExecutionManager(), new log::RealTimeWriter<cf_sample_type>(path.c_str(), 10*T_s), 10);
+    systems::Ramp time(mypm->getExecutionManager());
     if(req.enabled){
-        systems::connect(wam.kinematicsBase.kinOutput, getWAMJacobian.kinInput);
+                systems::connect(wam.kinematicsBase.kinOutput, getWAMJacobian.kinInput);
         systems::connect(getWAMJacobian.output, staticForceEstimator.Jacobian);
 
         systems::connect(wam.kinematicsBase.kinOutput, gravityTerm.kinInput);
         systems::connect(gravityTerm.output, staticForceEstimator.g);
 
         systems::connect(wam.jtSum.output, staticForceEstimator.jtInput);
+        systems::connect(staticForceEstimator.cartesianForceOutput, cfLogTg.template getInput<1>());
+        systems::connect(time.output, cfLogTg.template getInput<0>());
+        systems::connect(cfLogTg.output, cfLogger.input);
 
+        time.start();
         force_estimated = true;
         //res.success = true;
 
     } else {
         systems::disconnect(staticForceEstimator.jtInput);
         force_estimated = false;
+        cfLogger.closeLog();
+        disconnect(cfLogger.input); 
     }
 
     return true;
-}
+} 
 
 //Function to command a cartesian velocity to the WAM based on forces
 //nafahmidam
@@ -1132,7 +1155,7 @@ bool WamNode<DOF>::forceTorqueBase(wam_srvs::ForceTorqueBase::Request &req, wam_
             ROS_INFO("ForceTorqueBase disconnected from mode 1");
             // btsleep(1.0);
         }
-        // OrnKp << 4.0, 4.0, 4.0;&WamNode::staticForceEstimation
+        // OrnKp << 4.0, 4.0, 4.0;
         // OrnKd << 0.02, 0.02, 0.02;
         orientationSetPoint.setValue(wam.getToolOrientation());
         KpOrnSet.setValue(InputKp);
@@ -1142,7 +1165,7 @@ bool WamNode<DOF>::forceTorqueBase(wam_srvs::ForceTorqueBase::Request &req, wam_
         systems::forceConnect(wam.toolOrientation.output, OrtnSplitCont.FeedbackOrnInput);
         systems::forceConnect(orientationSetPoint.output, OrtnSplitCont.ReferenceOrnInput);
         systems::forceConnect(wam.kinematicsBase.kinOutput, OrtnSplitCont.kinInput);
-        systems::forceConnect(wam.kinematicsBase.kinOutput, tt2jt_ortn_split.kinInput);&WamNode::staticForceEstimation
+        systems::forceConnect(wam.kinematicsBase.kinOutput, tt2jt_ortn_split.kinInput);
         systems::forceConnect(OrtnSplitCont.CTOutput, tt2jt_ortn_split.input);
         // set up force
         // TorqueApplied[2] = 0.0;
@@ -1203,7 +1226,7 @@ bool WamNode<DOF>::forceTorqueBase(wam_srvs::ForceTorqueBase::Request &req, wam_
         systems::forceConnect(KthSet.output, ImpControl.KthInput);
         systems::forceConnect(XdSet.output, ImpControl.XdInput);
         systems::forceConnect(ThetadSet.output, ImpControl.ThetadInput);
-&WamNode::staticForceEstimation
+
         systems::forceConnect(wam.toolPosition.output, ImpControl.CpInput);
         systems::forceConnect(wam.toolVelocity.output, ImpControl.CvInput);
         systems::forceConnect(wam.toolOrientation.output, ImpControl.OrnInput);
@@ -2106,6 +2129,7 @@ void WamNode<DOF>::publishWam(ProductManager& pm) {
     }
     wam_jacobian_mn_pub.publish(wam_jacobian_mn);
 
+    
     if(force_estimated){
         force_msg.force[0] = staticForceEstimator.computedF[0];
         force_msg.force[1] = staticForceEstimator.computedF[1];
@@ -2122,7 +2146,7 @@ void WamNode<DOF>::publishWam(ProductManager& pm) {
         
     }
 }
-
+/*
 //Function to update the real-time control loops
 template<size_t DOF>
 void WamNode<DOF>::publishHand() //systems::PeriodicDataLogger<debug_tuple>& logger
@@ -2139,6 +2163,7 @@ void WamNode<DOF>::publishHand() //systems::PeriodicDataLogger<debug_tuple>& log
          *       Consider using real time mode on the hand.
          * NOTE: Publishing of finger state will be interrupted while the hand moves
          */
+        /*
         result = read_line();
         //ROS_INFO_STREAM("Cleaning read: " << result);
         std::size_t found = result.find("FGET P");
@@ -2169,7 +2194,7 @@ void WamNode<DOF>::publishHand() //systems::PeriodicDataLogger<debug_tuple>& log
         btsleep(1.0 / BHAND_PUBLISH_FREQ); // Sleep according to the specified publishing frequency
     }
 }
-
+*/
 //Function to update the real-time control loops
 template<size_t DOF>
 void WamNode<DOF>::updateRT(ProductManager& pm) //systems::PeriodicDataLogger<debug_tuple>& logger
@@ -2345,11 +2370,11 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam)
     BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
     ros::init(argc, argv, "wam");
     ros::NodeHandle n_;
-    WamNode<DOF> wam_node(wam);
+    WamNode<DOF> wam_node(wam, pm);
     wam_node.init(pm);
     ROS_INFO_STREAM("wam node initialized");
     ros::Rate pub_rate(PUBLISH_FREQ);
-    boost::thread handPubThread(&WamNode<DOF>::publishHand, &wam_node);
+    //boost::thread handPubThread(&WamNode<DOF>::publishHand, &wam_node);
 
     while (ros::ok() && pm.getSafetyModule()->getMode() == SafetyModule::ACTIVE) {
         ros::spinOnce();

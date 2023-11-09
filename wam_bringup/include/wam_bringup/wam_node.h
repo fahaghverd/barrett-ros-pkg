@@ -165,6 +165,7 @@ class WamNode
 
 	protected:
 		typedef boost::tuple<double, jp_type> jp_sample_type;
+		typedef boost::tuple<double, cf_type> cf_sample_type;
 		bool hand_available;
 		bool cart_vel_status; // real time control
 		bool ortn_vel_status; // real time control
@@ -178,6 +179,7 @@ class WamNode
 		double cart_vel_mag; // real time control
 		double ortn_vel_mag; // real time control
 		double fn;//global normal force
+		libconfig::Setting& setting; 
 
 		bool force_estimated;
 		cf_type force_norm;
@@ -269,7 +271,7 @@ class WamNode
 		systems::PIDController<double, double> VelocityComp;
 		systems::Constant<double> zero;
 		systems::ExposedOutput<jt_type> zero_joystick_torque;
-		systems::TupleGrouper<cf_type, double> tg;
+		systems::TupleGrouper<cf_type, double> tg, tg3;
 		systems::TupleGrouper<cp_type, double> tg2;
 		systems::Callback<boost::tuple<cf_type, double>, cf_type> mult;
 		systems::Callback<boost::tuple<cp_type, double>, cf_type> mult2;
@@ -318,6 +320,7 @@ class WamNode
 		StaticForceEstimatorwithG<DOF> staticForceEstimator;
 		getJacobian<DOF> getWAMJacobian;
 		systems::GravityCompensator<DOF> gravityTerm;
+		PrintToStream<cf_type> print;
 		
 		//ros
 		ros::Time last_cart_vel_msg_time;
@@ -390,7 +393,8 @@ class WamNode
 		ros::ServiceServer disconnect_systems_srv;	
 		ros::ServiceServer joy_ft_base_srv;	
 		ros::ServiceServer joy_ft_tool_srv;	
-
+		
+		/*
 		// BHAND 
         // ros::Rate pub_rate; // Default 100Hz
         std::string bhand_command;
@@ -409,25 +413,28 @@ class WamNode
         ros::ServiceServer hand_sprd_pos_srv;
         ros::ServiceServer hand_sprd_vel_srv;
         ros::ServiceServer hand_pinch_pos_srv;
-        // Our serial port variables
+		
+        
+		// Our serial port variables
         boost::asio::serial_port_base::baud_rate baud;
         boost::asio::serial_port_base::character_size char_size;
         boost::asio::serial_port_base::flow_control flow;
         boost::asio::serial_port_base::parity parity;
         boost::asio::serial_port_base::stop_bits stopbits;
         boost::asio::io_service io;
-        boost::asio::serial_port port;		
+        boost::asio::serial_port port; 
+		*/
 
 	public:
 		ros::NodeHandle n_;
-		ros::NodeHandle nb_; // BarrettHand specific nodehandle
+		//ros::NodeHandle nb_; // BarrettHand specific nodehandle
 		ProductManager* mypm;
-		libconfig::Setting& setting = mypm->getConfig().lookup(mypm->getWamDefaultConfigPath());
+		
 		bool exit_haptic_sphere;
 
-		WamNode(systems::Wam<DOF>& wam_) :
+		WamNode(systems::Wam<DOF>& wam_, ProductManager& pm) :
 			n_("wam"),
-			nb_("bhand"),
+			//nb_("bhand"),
 			wam(wam_), 
 			ramp(NULL, SPEED),
 			vs_error_sys(0), 
@@ -443,29 +450,33 @@ class WamNode
 			jtSat_ornSplit(boost::bind(saturateJt<DOF>, _1, jtLimits)), 
 			tangentGain(0.0),
 			normalForceGain(0.0),
+			setting(pm.getConfig().lookup(pm.getWamDefaultConfigPath())),
 			gravityTerm(setting["gravity_compensation"]),
+			print(pm.getExecutionManager())
 			// ImpControl(cp_type(100.0, 100.0, 100.0), cp_type(1.0, 1.0, 1.0), cp_type(0.0, 0.0, 0.0), cp_type(0.4, 0.0, 0.6), cp_type(0, 0.0, 0.0)),
         	// pub_rate(pub_freq), 
-        	baud(9600), 
-        	char_size(8),
-        	flow(boost::asio::serial_port_base::flow_control::none),
-        	parity(boost::asio::serial_port_base::parity::none),
-        	stopbits(boost::asio::serial_port_base::stop_bits::one), 
-        	port(io, BHAND_PORT)
+        	// baud(9600), 
+        	// char_size(8),
+        	// flow(boost::asio::serial_port_base::flow_control::none),
+        	// parity(boost::asio::serial_port_base::parity::none),
+        	// stopbits(boost::asio::serial_port_base::stop_bits::one), 
+        	// port(io, BHAND_PORT)
 			{
 				// configure Systems
-				comp.setKp(3e3);
-				comp.setKd(3e1);
+				// comp.setKp(3e3);
+				// comp.setKd(3e1);
 			}
 
 		~WamNode() {}
 
+		/*
 		std::string read_line();
         void write(std::string buf) {
             //write command out to serial port
             boost::asio::write(port, boost::asio::buffer((buf+"\r").c_str(), buf.size() + 1));
-        }
-
+        }	
+		*/
+		
 		void init(ProductManager& pm);
 
         void disconnectSystems();
@@ -518,6 +529,7 @@ class WamNode
 		void publishWam(ProductManager& pm);
 		void updateRT(ProductManager& pm);
 
+		/*
 		bool handInitialize(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
         bool handOpenGrasp(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
         bool handCloseGrasp(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
@@ -531,6 +543,7 @@ class WamNode
         bool handGraspVel(wam_srvs::BHandGraspVel::Request &req, wam_srvs::BHandGraspVel::Response &res);
         bool handSpreadVel(wam_srvs::BHandSpreadVel::Request &req, wam_srvs::BHandSpreadVel::Response &res);
 		void publishHand(void);
+		*/
 
 		
 };

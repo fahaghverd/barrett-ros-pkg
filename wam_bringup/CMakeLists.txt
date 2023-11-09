@@ -3,7 +3,7 @@ project(wam_bringup)
 
 ## libbarrett
 find_package(Barrett REQUIRED)
-include_directories(${Barrett_INCLUDE_DIRS})
+#include_directories(${Barrett_INCLUDE_DIRS})
 link_directories(${Barrett_LIBRARY_DIRS})
 add_definitions(${Barrett_DEFINITIONS})
 
@@ -23,11 +23,6 @@ include_directories(${CURSES_INCLUDE_DIRS})
 ## Boost
 find_package(Boost 1.71 COMPONENTS system thread REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
-
-## Eigen3
-find_package(Eigen3 REQUIRED)
-include_directories(${Eigen_INCLUDE_DIRS})
-set(exported_include_dirs ${exported_include_dirs} ${Eigen_INCLUDE_DIRS})
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
