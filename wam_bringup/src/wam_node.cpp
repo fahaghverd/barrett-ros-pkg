@@ -52,6 +52,7 @@ void WamNode<DOF>::init(ProductManager& pm) {
     fn = 0.0;
     systems_connected = false;
     force_estimated = false;
+
     
     
 
@@ -893,36 +894,33 @@ bool WamNode<DOF>::cartMove(wam_srvs::CartPosMove::Request &req, wam_srvs::CartP
 template<size_t DOF>
 bool WamNode<DOF>::staticForceEstimation(wam_srvs::StaticForceEstimationwithG::Request &req, wam_srvs::StaticForceEstimationwithG::Response &res)
 {   
-    std::string path = "/home";
-    systems::TupleGrouper<double, cf_type> cfLogTg;
-    double T_s = mypm->getExecutionManager()->getPeriod();
-    systems::PeriodicDataLogger<cf_sample_type> cfLogger(mypm->getExecutionManager(), new log::RealTimeWriter<cf_sample_type>(path.c_str(), 10*T_s), 10);
-    systems::Ramp time(mypm->getExecutionManager());
+    outputFile.open("home/output.txt");
+    
     if(req.enabled){
-                systems::connect(wam.kinematicsBase.kinOutput, getWAMJacobian.kinInput);
+        ROS_INFO("Static force estimation enabled.");
+        systems::connect(wam.kinematicsBase.kinOutput, getWAMJacobian.kinInput);
         systems::connect(getWAMJacobian.output, staticForceEstimator.Jacobian);
 
         systems::connect(wam.kinematicsBase.kinOutput, gravityTerm.kinInput);
         systems::connect(gravityTerm.output, staticForceEstimator.g);
 
         systems::connect(wam.jtSum.output, staticForceEstimator.jtInput);
-        systems::connect(staticForceEstimator.cartesianForceOutput, cfLogTg.template getInput<1>());
-        systems::connect(time.output, cfLogTg.template getInput<0>());
-        systems::connect(cfLogTg.output, cfLogger.input);
+        systems::connect(staticForceEstimator.cartesianForceOutput, print.input);
 
-        time.start();
         force_estimated = true;
         //res.success = true;
 
     } else {
+        ROS_INFO("Static force estimation disabled.");
         systems::disconnect(staticForceEstimator.jtInput);
+        disconnect(print.input); 
         force_estimated = false;
-        cfLogger.closeLog();
-        disconnect(cfLogger.input); 
     }
 
     return true;
 } 
+
+
 
 //Function to command a cartesian velocity to the WAM based on forces
 //nafahmidam
@@ -2134,7 +2132,8 @@ void WamNode<DOF>::publishWam(ProductManager& pm) {
         force_msg.force[0] = staticForceEstimator.computedF[0];
         force_msg.force[1] = staticForceEstimator.computedF[1];
         force_msg.force[2] = staticForceEstimator.computedF[2];
-        force_msg.force_norm = staticForceEstimator.computedF.norm(); //N in base frame 
+        force_msg.force_norm = staticForceEstimator.computedF.norm(); //N in base frame
+        if(staticForceEstimator.computedF.norm() > 14.0){ROS_INFO("Contact detected.");} 
         if(staticForceEstimator.computedF.norm() > 0.0){
             force_norm = staticForceEstimator.computedF;
             force_norm.normalize();

@@ -320,6 +320,7 @@ class WamNode
 		StaticForceEstimatorwithG<DOF> staticForceEstimator;
 		getJacobian<DOF> getWAMJacobian;
 		systems::GravityCompensator<DOF> gravityTerm;
+		std::ofstream outputFile; 
 		PrintToStream<cf_type> print;
 		
 		//ros
@@ -452,7 +453,7 @@ class WamNode
 			normalForceGain(0.0),
 			setting(pm.getConfig().lookup(pm.getWamDefaultConfigPath())),
 			gravityTerm(setting["gravity_compensation"]),
-			print(pm.getExecutionManager())
+			print(pm.getExecutionManager(),"Data: ", outputFile)
 			// ImpControl(cp_type(100.0, 100.0, 100.0), cp_type(1.0, 1.0, 1.0), cp_type(0.0, 0.0, 0.0), cp_type(0.4, 0.0, 0.6), cp_type(0, 0.0, 0.0)),
         	// pub_rate(pub_freq), 
         	// baud(9600), 
