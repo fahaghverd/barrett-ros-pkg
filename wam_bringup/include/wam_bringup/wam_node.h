@@ -100,6 +100,7 @@
 #include "wam_srvs/ForceTorqueToolTime.h"
 #include "wam_srvs/ForceTorqueBase.h"
 #include "wam_srvs/ForceTorque.h"
+#include "wam_srvs/CP_ImpedanceControl.h"
 
 #include "wam_srvs/StaticForceEstimationwithG.h"
 #include <wam_msgs/RTCartForce.h>
@@ -390,6 +391,7 @@ class WamNode
 		ros::ServiceServer force_torque_tool_time_srv;
 		ros::ServiceServer force_torque_base_time_srv;	
 		ros::ServiceServer static_force_estimation_srv;
+		ros::ServiceServer cp_impedance_control_srv;
 
 		ros::ServiceServer disconnect_systems_srv;	
 		ros::ServiceServer joy_ft_base_srv;	
@@ -526,7 +528,8 @@ class WamNode
 		void vsErrCB(const std_msgs::Float32::ConstPtr& msg);
 		
 		bool staticForceEstimation(wam_srvs::StaticForceEstimationwithG::Request &req, wam_srvs::StaticForceEstimationwithG::Response &res);
-
+		bool cpImpedanceControl(wam_srvs::CP_ImpedanceControl::Request &req, wam_srvs::CP_ImpedanceControl::Response &res);
+		
 		void publishWam(ProductManager& pm);
 		void updateRT(ProductManager& pm);
 

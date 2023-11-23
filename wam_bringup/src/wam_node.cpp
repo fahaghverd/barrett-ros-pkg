@@ -188,6 +188,7 @@ void WamNode<DOF>::init(ProductManager& pm) {
     stop_visual_fix = n_.advertiseService("stop_visual_fix", &WamNode::stopVisualFix, this);
     follow_path_srv = n_.advertiseService("follow_path", &WamNode::followPath,this);
     static_force_estimation_srv = n_.advertiseService("static_force_estimation", &WamNode::staticForceEstimation, this);
+    cp_impedance_control_srv = n_.advertiseService("cp_impedance_control", &WamNode::cpImpedanceControl, this);
 
     ROS_INFO("wam services now advertised");
 }
@@ -730,6 +731,122 @@ bool WamNode<DOF>::holdCPos(wam_srvs::HoldGains::Request &req, wam_srvs::HoldGai
     return true;
 }
 
+// Function to move WAM to a Cartesian Position with impedance control
+// fhaghverd 11/2023
+template<size_t DOF>
+bool WamNode<DOF>::cpImpedanceControl(wam_srvs::CP_ImpedanceControl::Request &req, wam_srvs::CP_ImpedanceControl::Response &res) {
+    ROS_INFO("Cartesian Trajectory Tracking with Impedance control request");
+    
+    std::vector<units::CartesianPosition::type> waypoints;
+    
+    
+    jt_type jtLimits(30.0);
+    cp_type cp_cmd, KpApplied, KdApplied;
+    cp_cmd << req.cp[0], req.cp[1], req.cp[2];
+    KpApplied << req.kp[0], req.kp[1], req.kp[2];
+    KdApplied << req.kd[0], req.kd[1], req.kd[2];
+
+    cp_type finalPos(cp_cmd);
+    cp_type initialPos(wam.getToolPosition());
+    double offset = 0.05;
+    Eigen::Vector3d deltaPos = finalPos - initialPos;
+    double totalDistance = deltaPos.norm();
+    // Calculate intermediate positions by offsetting x, y, and z
+    Eigen::Vector3d yeeb = initialPos + deltaPos * offset;
+    Eigen::Vector3d goalb = finalPos - deltaPos * offset;
+
+    // Bezier interpolation
+    int numPop = 1000;
+    std::vector<Eigen::Vector3d> plPop;
+    for (int i = 0; i < numPop; ++i) {
+        double t = static_cast<double>(i) / (numPop - 1);
+        Eigen::Vector3d pl = (1 - t) * (1 - t) * (1 - t) * initialPos +
+                             3 * (1 - t) * (1 - t) * t * yeeb +
+                             3 * (1 - t) * t * t * goalb +
+                             t * t * t * finalPos;
+        plPop.push_back(pl);
+    }
+
+    // Calculate the subset of points to sample
+    int steps = 20;
+    double squish = 2.0;
+    std::vector<double> midArr;
+    for (double t = -squish; t <= squish; t += squish / (steps - 1)) {
+        midArr.push_back(static_cast<double>(numPop) / (1 + std::exp(-t)));
+    }
+
+    double minMidArr = *std::min_element(midArr.begin(), midArr.end());
+    double maxMidArr = *std::max_element(midArr.begin(), midArr.end());
+    double m = (numPop - 1) / (maxMidArr - minMidArr);
+
+    std::vector<int> iArr;
+    for (double t : midArr) {
+        int index = static_cast<int>(m * (t - minMidArr));
+        iArr.push_back(index);
+    }
+
+    iArr[0] = 0;
+    iArr.back() = numPop - 1;
+
+    // List of points as a sample of bezier
+    std::vector<units::CartesianPosition::type> pl;
+    for (int index : iArr) {
+        pl.push_back(cp_type(plPop[index]));
+    }
+
+    disconnectSystems();
+
+    KxSet.setValue(KpApplied);
+    DxSet.setValue(KdApplied);
+    XdSet.setValue(wam.getToolPosition());
+    OrnKxSet.setValue(cp_type(0.0, 0.0, 0.0));
+    OrnDxSet.setValue(cp_type(0.0, 0.0, 0.0));
+    OrnXdSet.setValue(wam.getToolOrientation());
+
+    // CONNECT SPRING SYSTEM
+    systems::forceConnect(KxSet.output, ImpControl.KxInput);
+    systems::forceConnect(DxSet.output, ImpControl.DxInput);
+    systems::forceConnect(XdSet.output, ImpControl.XdInput);
+
+    systems::forceConnect(OrnKxSet.output, ImpControl.OrnKpGains);
+    systems::forceConnect(OrnDxSet.output, ImpControl.OrnKdGains);
+    systems::forceConnect(OrnXdSet.output, ImpControl.OrnReferenceInput);
+    systems::forceConnect(wam.toolOrientation.output, ImpControl.OrnFeedbackInput);
+
+    systems::forceConnect(wam.toolPosition.output, ImpControl.CpInput);
+    systems::forceConnect(wam.toolVelocity.output, ImpControl.CvInput);
+    systems::forceConnect(wam.kinematicsBase.kinOutput, ImpControl.kinInput);
+
+    systems::forceConnect(wam.kinematicsBase.kinOutput, toolforce2jt.kinInput);
+    //systems::forceConnect(wam.kinematicsBase.kinOutput, tooltorque2jt.kinInput);
+    systems::forceConnect(wam.kinematicsBase.kinOutput, tt2jt_ortn_split.kinInput); // how tt2jt_ortn_split is different from tooltorque2jt??
+
+    systems::forceConnect(ImpControl.CFOutput, toolforce2jt.input);
+    systems::forceConnect(ImpControl.CTOutput, tt2jt_ortn_split.input);
+
+    // CONNECT TO SUMMER
+    systems::forceConnect(toolforce2jt.output, torqueSum.getInput(0));
+    systems::forceConnect(tt2jt_ortn_split.output, torqueSum.getInput(1));
+
+    // SATURATE AND CONNECT TO WAM INPUT
+    systems::forceConnect(torqueSum.output, jtSat.input);        
+    systems::forceConnect(jtSat.output, wam.input); 
+
+    for (const auto& waypoint : pl) {
+        waypoints.push_back(waypoint);
+
+        // Move to the waypoint
+        XdSet.setValue(waypoint);
+        btsleep(0.5);
+        cp_type e = (waypoint - wam.getToolPosition())/(waypoint.norm());
+        if(e.norm() > 0.05) {std::cout<<e<<std::endl;}
+        
+    }
+
+    systems::disconnect(torqueSum.output);
+    return true;
+    
+}
 // Function to hold WAM end effector Orientation
 // lpetrich 06/2019
 template<size_t DOF>

@@ -42,6 +42,7 @@ add_service_files(
   ForceTorqueToolTime.srv
   FollowPath.srv
   StaticForceEstimationwithG.srv
+  CP_ImpedanceControl.srv
 )
 
 ## Generate added messages and services with any dependencies listed here
