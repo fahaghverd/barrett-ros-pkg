@@ -3,9 +3,8 @@ project(wam_bringup)
 
 ## libbarrett
 find_package(Barrett REQUIRED)
-#include_directories(${Barrett_INCLUDE_DIRS})
-link_directories(${Barrett_LIBRARY_DIRS})
-add_definitions(${Barrett_DEFINITIONS})
+include_directories(${BARRETT_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS})
 
 ## GSL
 set(GSL_INCLUDE_DIRS "/usr/include/gsl")

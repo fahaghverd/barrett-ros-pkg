@@ -768,7 +768,7 @@ bool WamNode<DOF>::cpImpedanceControl(wam_srvs::CP_ImpedanceControl::Request &re
     }
 
     // Calculate the subset of points to sample
-    int steps = 20;
+    int steps = 200;
     double squish = 2.0;
     std::vector<double> midArr;
     for (double t = -squish; t <= squish; t += squish / (steps - 1)) {
