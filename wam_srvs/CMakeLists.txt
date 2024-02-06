@@ -43,6 +43,7 @@ add_service_files(
   FollowPath.srv
   StaticForceEstimationwithG.srv
   CP_ImpedanceControl.srv
+  ContactControlTeleop.srv
 )
 
 ## Generate added messages and services with any dependencies listed here
