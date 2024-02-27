@@ -82,6 +82,20 @@ target_link_libraries(
   config++
 #  ${XENOMAI_LIBRARIES}
   )
+  
+add_executable(wam_node_teleop src/wam_node_teleop.cpp)
+add_dependencies(wam_node_teleop wam_node_teleop_generate_messages_cpp)
+target_link_libraries(
+  wam_node_teleop
+  barrett 
+  ${catkin_LIBRARIES} 
+  ${CURSES_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${GSL_LIBRARY}
+  config++
+#  ${XENOMAI_LIBRARIES}
+  )
+  
 add_executable(bhand_node src/bhand_node.cpp)
 add_dependencies(bhand_node bhand_node_generate_messages_cpp)
 target_link_libraries(

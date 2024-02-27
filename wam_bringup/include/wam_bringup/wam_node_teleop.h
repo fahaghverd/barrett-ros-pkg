@@ -25,6 +25,7 @@
 	Date: 5 June, 2012
 	Author: Kyle Maroney
 	Refactored by: Laura Petrich 17/06/19
+	Refactored by: Faezeh Haghverd 3/11/23
 
  */
 
@@ -36,6 +37,8 @@
 #include "wam_bringup/tangential_velocity.h"
 #include "wam_bringup/orientation_controller_variable_gains.h"
 #include "wam_bringup/impedence_controller.h"
+#include "wam_bringup/static_force_estimator_withg.h"
+#include "wam_bringup/get_jacobian_system.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -78,6 +81,7 @@
 #include "wam_srvs/GravityComp.h"
 #include "wam_srvs/HapticSphere.h"
 #include "wam_srvs/Hold.h"
+#include "wam_srvs/HoldGains.h"
 #include "wam_srvs/JointMove.h"
 #include "wam_srvs/JointMoveBlock.h"
 #include "wam_srvs/PoseMove.h"
@@ -96,6 +100,11 @@
 #include "wam_srvs/ForceTorqueToolTime.h"
 #include "wam_srvs/ForceTorqueBase.h"
 #include "wam_srvs/ForceTorque.h"
+#include "wam_srvs/CP_ImpedanceControl.h"
+
+#include "wam_srvs/StaticForceEstimationwithG.h"
+#include <wam_msgs/RTCartForce.h>
+
 
 #include <barrett/exception.h>
 #include <barrett/math.h>
@@ -107,28 +116,58 @@
 #include <barrett/detail/stl_utils.h>
 #include <barrett/log.h>
 
+#include <libconfig.h++>
+#include <fcntl.h>
+#include <termios.h>
+
 
 static const int PUBLISH_FREQ = 250; // Default Control Loop / Publishing Frequency
+static const int BHAND_PUBLISH_FREQ = 5; // Publishing Frequency for the BarretHand
 static const double SPEED = 0.03; // Default Cartesian Velocity
+
+// bhand constants
+const std::string BHAND_PORT = "/dev/ttyS0"; //Serial port location - can be found with command line $ dmesg | grep tty
+// const double pub_freq = 10; //Hz
+/* Ratio from motor encoding the hand returns to radians.
+ * Fingers move about 135 degrees max = 2.356 radians
+ * Motor encoding goes from 0 to ~17000
+ *
+ * Original was using 5729.578
+ * use: 17000 / 2.1223
+*/
+const double FINGER_RATIO = 8010.17763;
+/* Ratio from motor encoding the hand returns to radians.
+ * Fingers move 180 degrees, pi radians
+ * Motor encoding goes from 0 to ~3146
+ *
+ * Original was using 1002.68
+ * use: 3146 / 3.1416
+*/
+const double SPREAD_RATIO = 1001.40056;
+/* 0.9 / 2.1223 = 0.424068; Ratio of max finger bent. If
+ * FingerOne/KnuckleTwoJoint is closed 50% of the way assume
+ * FingerOne/KnuckleThreeJoint is closed that much
+*/
+const double SECOND_LINK_RATIO = 0.424068;
 
 using namespace barrett;
 using barrett::detail::waitForEnter;
 using systems::connect;
 using systems::disconnect;
 using systems::reconnect;
-// using detail::waitForEnter;
 
 BARRETT_UNITS_FIXED_SIZE_TYPEDEFS;
 
 //WamNode Class
 template<size_t DOF>
-	class WamNode
-	{
-		BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
+class WamNode
+{
+	BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
 
 	protected:
 		typedef boost::tuple<double, jp_type> jp_sample_type;
-
+		typedef boost::tuple<double, cf_type> cf_sample_type;
+		bool hand_available;
 		bool cart_vel_status; // real time control
 		bool ortn_vel_status; // real time control
 		bool jnt_vel_status; // real time control
@@ -138,15 +177,13 @@ template<size_t DOF>
 		bool ortn_pos_status; // real time control
 		bool new_rt_cmd; // real time control
 		bool systems_connected;
-
 		double cart_vel_mag; // real time control
 		double ortn_vel_mag; // real time control
-		double fn; // global normal force
+		double fn;//global normal force
 
+		// Hand* hand;
 		VisualHapticPathNormals *vhp; // haptics 
 		applyForceToolFrame<DOF> appForce1; // force control
-
-
 		MasterMaster<DOF> *mm; // linking
 		tangentialVelocityCompute<DOF> computeTangentVel; // cartVel
 		OrientationControllerVariableGains<DOF> OrtnSplitCont;
@@ -160,7 +197,7 @@ template<size_t DOF>
 		jp_type rt_jp_rl;
 
 		jv_type rt_jv_cmd;
-		
+
 		cp_type rt_cv_cmd;
 		cp_type cp_cmd;
 		cp_type rt_cp_cmd;
@@ -185,14 +222,15 @@ template<size_t DOF>
 
         // pid_control variables
         systems::PIDController<double, double> dynamic_pid_control;
-        // impedance controller for ForceTorqueBase
-        ImpedanceController6DOF<DOF> ImpControl;
+        ImpedanceController6DOF<DOF> ImpControl; // impedance controller for ForceTorqueBase
 		systems::ExposedOutput<cp_type> KxSet;
 		systems::ExposedOutput<cp_type> DxSet;
 		systems::ExposedOutput<cp_type> XdSet;
 		systems::ExposedOutput<cp_type> OrnKxSet;
 		systems::ExposedOutput<cp_type> OrnDxSet;
 		systems::ExposedOutput<Eigen::Quaterniond> OrnXdSet;
+		systems::ExposedOutput<cp_type> KthSet;
+		systems::ExposedOutput<cp_type> ThetadSet;
 
 		//Note: orientationSetPoint is used both in holdOrtn, holdOrtn2 and ortnSplitMove
 		systems::ExposedOutput<Eigen::Quaterniond> orientationSetPoint;
@@ -220,6 +258,7 @@ template<size_t DOF>
 		Eigen::Quaterniond rt_op_cmd;
 		Eigen::Quaterniond rt_op_rl;
 		math::Vector<3>::type rt_ortn_cmd;
+
 		//Haptics
 		systems::ExposedOutput<double> vs_error_sys;
 		systems::ExposedOutput<cf_type> dir_sys;
@@ -229,7 +268,7 @@ template<size_t DOF>
 		systems::PIDController<double, double> VelocityComp;
 		systems::Constant<double> zero;
 		systems::ExposedOutput<jt_type> zero_joystick_torque;
-		systems::TupleGrouper<cf_type, double> tg;
+		systems::TupleGrouper<cf_type, double> tg, tg3;
 		systems::TupleGrouper<cp_type, double> tg2;
 		systems::Callback<boost::tuple<cf_type, double>, cf_type> mult;
 		systems::Callback<boost::tuple<cp_type, double>, cf_type> mult2;
@@ -237,37 +276,22 @@ template<size_t DOF>
 		systems::ToolForceToJointTorques<DOF> tf2jt_cartVel;
 		jt_type jtLimits;
 		systems::Callback<jt_type> jtSat, jtSat_cartVel, jtSat_ornSplit;
-		//Path Following Service
-		systems::Gain<cp_type, double, cf_type> tangentGain;//(0.0);
-		systems::Summer<cf_type> tfSum;
-		systems::Summer<cf_type> tfSumNormalTangential;
-		systems::Gain<cp_type, double, cf_type> normalForceGain;//(0.0);
-		//Orientation to set the tool frame perpendicular to the path. 
-		computeQuaternionSetPoint<DOF> computeQuaternionSetPoint1;
-		//ForceTorque Control
-		//systems::Callback<jt_type> jtSat(boost::bind(saturateJt<DOF>, _1, jtLimits));
-		systems::ToolForceToJointTorques<DOF> toolforce2jt;
-		systems::ToolTorqueToJointTorques<DOF> tooltorque2jt;
-		systems::ToolForceToJointTorques<DOF> toolforce2jt2;
-		systems::ToolTorqueToJointTorques<DOF> tooltorque2jt2;
-		systems::ExposedOutput<cf_type> exposedOutputForce;
-		systems::ExposedOutput<ct_type> exposedOutputTorque;
-		systems::Summer<jt_type> torqueSum;
-		systems::Summer<jt_type> torqueSum2;
-		systems::Summer<jt_type> torqueSum3;
-		systems::Summer<jt_type> torqueSum4;
+
 		//VelocityControl Service
 		systems::ExposedOutput<double> exposedDesiredVel;
 		systems::ExposedOutput<cp_type> exposedDirVel;
+
 		//orientation Controller-->not using neither moveTo nor trackReference 
 		systems::ToolOrientationController<DOF> toolOrntController;
 		systems::ToolTorqueToJointTorques<DOF> tt2jtOrnController;
 		systems::Summer<jt_type,3> jtSummer;
+
 		//Orientation Split Move service 
 		systems::ExposedOutput<cp_type> KpOrnSet ;
 		systems::ExposedOutput<cp_type> KdOrnSet ;
 		systems::ToolTorqueToJointTorques<DOF> tt2jt_ortn_split;
-		// ros
+		
+		//ros
 		ros::Time last_cart_vel_msg_time;
 		ros::Time last_ortn_vel_msg_time;
 		ros::Time last_jnt_vel_msg_time;
@@ -276,9 +300,11 @@ template<size_t DOF>
 		ros::Time last_cart_pos_msg_time;
 		ros::Time last_ortn_pos_msg_time;
 		ros::Duration rt_msg_timeout;
+
 		//Subscribed Topics
 		wam_msgs::RTCartVel cart_vel_cmd;
 		wam_msgs::RTOrtnVel ortn_vel_cmd;
+
 		//Subscribers
 		ros::Subscriber cart_vel_sub;
 		ros::Subscriber ortn_vel_sub;
@@ -287,15 +313,18 @@ template<size_t DOF>
 		ros::Subscriber jnt_hand_tool_sub;
 		ros::Subscriber cart_pos_sub;
 		ros::Subscriber ortn_pos_sub;
-		ros::Subscriber vs_error;
+
 		//Published Topics
 		sensor_msgs::JointState wam_joint_state;
 		geometry_msgs::PoseStamped wam_pose;
 		wam_msgs::MatrixMN wam_jacobian_mn;
+
 		//Publishers
 		ros::Publisher wam_joint_state_pub;
 		ros::Publisher wam_pose_pub;
 		ros::Publisher wam_jacobian_mn_pub;
+		ros::Publisher wam_estimated_contact_force_pub;
+
 		//Services
 		ros::ServiceServer gravity_srv;
 		ros::ServiceServer go_home_srv;
@@ -306,9 +335,6 @@ template<size_t DOF>
 		ros::ServiceServer hold_ortn2_srv;
 		ros::ServiceServer joint_move_srv;
 		ros::ServiceServer joint_move_block_srv;
-		ros::ServiceServer pose_move_srv;
-		ros::ServiceServer force_torque_base_srv;
-		ros::ServiceServer force_torque_tool_srv;
 		ros::ServiceServer cart_move_srv;
 		ros::ServiceServer cart_vel_srv;
 		ros::ServiceServer ortn_move_srv;
@@ -317,31 +343,61 @@ template<size_t DOF>
 		ros::ServiceServer play_srv;
 		ros::ServiceServer link_arm_srv;
 		ros::ServiceServer unlink_arm_srv;
-		ros::ServiceServer start_visual_fix;
-		ros::ServiceServer stop_visual_fix;
-		ros::ServiceServer follow_path_srv;
 		// LP control experiments
 		ros::ServiceServer jp_pid_srv;
 		ros::ServiceServer jv_pid_srv;
 		ros::ServiceServer tp_pid_srv;
-		ros::ServiceServer force_torque_tool_time_srv;
-		ros::ServiceServer force_torque_base_time_srv;	
+		ros::ServiceServer static_force_estimation_srv;
+		ros::ServiceServer cp_impedance_control_srv;
 
 		ros::ServiceServer disconnect_systems_srv;	
-		ros::ServiceServer joy_ft_base_srv;	
-		ros::ServiceServer joy_ft_tool_srv;	
+		systems::Summer<jt_type> torqueSum;
+		systems::ToolForceToJointTorques<DOF> toolforce2jt;
+
+		
+		/*
+		// BHAND 
+        // ros::Rate pub_rate; // Default 100Hz
+        std::string bhand_command;
+        sensor_msgs::JointState bhand_joint_state;
+        ros::Publisher bhand_joint_state_pub;
+        //Services to be made available
+        ros::ServiceServer hand_initialize_srv;
+        ros::ServiceServer hand_open_grsp_srv;
+        ros::ServiceServer hand_close_grsp_srv;
+        ros::ServiceServer hand_open_sprd_srv;
+        ros::ServiceServer hand_close_sprd_srv;
+        ros::ServiceServer hand_fngr_pos_srv;
+        ros::ServiceServer hand_fngr_vel_srv;
+        ros::ServiceServer hand_grsp_pos_srv;
+        ros::ServiceServer hand_grsp_vel_srv;
+        ros::ServiceServer hand_sprd_pos_srv;
+        ros::ServiceServer hand_sprd_vel_srv;
+        ros::ServiceServer hand_pinch_pos_srv;
+		
+        
+		// Our serial port variables
+        boost::asio::serial_port_base::baud_rate baud;
+        boost::asio::serial_port_base::character_size char_size;
+        boost::asio::serial_port_base::flow_control flow;
+        boost::asio::serial_port_base::parity parity;
+        boost::asio::serial_port_base::stop_bits stopbits;
+        boost::asio::io_service io;
+        boost::asio::serial_port port; 
+		*/
 
 	public:
 		ros::NodeHandle n_;
+		//ros::NodeHandle nb_; // BarrettHand specific nodehandle
 		ProductManager* mypm;
+		
 		bool exit_haptic_sphere;
 
-		WamNode(systems::Wam<DOF>& wam_) :
+		WamNode(systems::Wam<DOF>& wam_, ProductManager& pm) :
 			n_("wam"),
+			//nb_("bhand"),
 			wam(wam_), 
 			ramp(NULL, SPEED),
-			vs_error_sys(0), 
-			dir_sys(cf_type::Unit(1) * -1), 
 			zero(0), 
 			mult(scale), 
 			mult2(scale), 
@@ -350,59 +406,82 @@ template<size_t DOF>
 			jtLimits(35.0), 
 			jtSat(boost::bind(saturateJt<DOF>, _1, jtLimits)), 
 			jtSat_cartVel(boost::bind(saturateJt<DOF>, _1, jtLimits)),
-			jtSat_ornSplit(boost::bind(saturateJt<DOF>, _1, jtLimits)), 
-			tangentGain(0.0),
-			normalForceGain(0.0)
-   		{
-			// configure Systems
-			comp.setKp(3e3);
-			comp.setKd(3e1);
-		}
+			jtSat_ornSplit(boost::bind(saturateJt<DOF>, _1, jtLimits))
+			// ImpControl(cp_type(100.0, 100.0, 100.0), cp_type(1.0, 1.0, 1.0), cp_type(0.0, 0.0, 0.0), cp_type(0.4, 0.0, 0.6), cp_type(0, 0.0, 0.0)),
+        	// pub_rate(pub_freq), 
+        	// baud(9600), 
+        	// char_size(8),
+        	// flow(boost::asio::serial_port_base::flow_control::none),
+        	// parity(boost::asio::serial_port_base::parity::none),
+        	// stopbits(boost::asio::serial_port_base::stop_bits::one), 
+        	// port(io, BHAND_PORT)
+			{
+				// configure Systems
+				// comp.setKp(3e3);
+				// comp.setKd(3e1);
+			}
+
 		~WamNode() {}
 
+		/*
+		std::string read_line();
+        void write(std::string buf) {
+            //write command out to serial port
+            boost::asio::write(port, boost::asio::buffer((buf+"\r").c_str(), buf.size() + 1));
+        }	
+		*/
+		
 		void init(ProductManager& pm);
+
         void disconnectSystems();
 		bool disconnectSystems(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-		bool joyForceTorqueBase(wam_srvs::ForceTorque::Request &req, wam_srvs::ForceTorque::Response &res);
-		bool joyForceTorqueTool(wam_srvs::ForceTorque::Request &req, wam_srvs::ForceTorque::Response &res);
-
+		
 		bool jpPIDControl(wam_srvs::JP_PID::Request &req, wam_srvs::JP_PID::Response &res);
 		bool jvPIDControl(wam_srvs::JV_PID::Request &req, wam_srvs::JV_PID::Response &res);
 		bool tpPIDControl(wam_srvs::TP_PID::Request &req, wam_srvs::TP_PID::Response &res);
+		
 		bool hapticSphere(wam_srvs::HapticSphere::Request &req, wam_srvs::HapticSphere::Response &res);
 		bool gravity(wam_srvs::GravityComp::Request &req, wam_srvs::GravityComp::Response &res);
 		bool goHome(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 		bool holdJPos(wam_srvs::Hold::Request &req, wam_srvs::Hold::Response &res);
-		bool holdCPos(wam_srvs::Hold::Request &req, wam_srvs::Hold::Response &res);
-		bool holdOrtn(wam_srvs::Hold::Request &req, wam_srvs::Hold::Response &res);
+		bool holdCPos(wam_srvs::HoldGains::Request &req, wam_srvs::HoldGains::Response &res);
+		bool holdOrtn(wam_srvs::HoldGains::Request &req, wam_srvs::HoldGains::Response &res);
 		bool holdOrtn2(wam_srvs::Hold::Request &req, wam_srvs::Hold::Response &res);
 		bool jointMove(wam_srvs::JointMove::Request &req, wam_srvs::JointMove::Response &res);
 		bool jointMoveBlock(wam_srvs::JointMoveBlock::Request &req, wam_srvs::JointMoveBlock::Response &res);
-		bool poseMove(wam_srvs::PoseMove::Request &req, wam_srvs::PoseMove::Response &res);
 		bool cartMove(wam_srvs::CartPosMove::Request &req, wam_srvs::CartPosMove::Response &res);
 		bool cartVel(wam_srvs::CartVel::Request &req, wam_srvs::CartVel::Response &res);
 		bool ortnMove(wam_srvs::OrtnMove::Request &req, wam_srvs::OrtnMove::Response &res);
-		bool ortnSplitMove(wam_srvs::OrtnSplitMove::Request &req, wam_srvs::OrtnSplitMove::Response &res);
-		bool forceTorqueBase(wam_srvs::ForceTorqueBase::Request &req, wam_srvs::ForceTorqueBase::Response &res);
-		bool forceTorqueTool(wam_srvs::ForceTorqueTool::Request &req, wam_srvs::ForceTorqueTool::Response &res);
-		bool forceTorqueToolTime(wam_srvs::ForceTorqueToolTime::Request &req, wam_srvs::ForceTorqueToolTime::Response &res);
-		bool forceTorqueBaseTime(wam_srvs::ForceTorqueToolTime::Request &req, wam_srvs::ForceTorqueToolTime::Response &res);
-
 
 		bool teachMotion(wam_srvs::Teach::Request &req, wam_srvs::Teach::Response &res);
 		bool playMotion(wam_srvs::Play::Request &req, wam_srvs::Play::Response &res);
 		bool linkArm(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res);
 		bool unLinkArm(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-		bool startVisualFix(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-		bool stopVisualFix(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-		bool followPath(wam_srvs::FollowPath::Request &req, wam_srvs::FollowPath::Response &res);
 		void cartVelCB(const wam_msgs::RTCartVel::ConstPtr& msg);
 		void ortnVelCB(const wam_msgs::RTOrtnVel::ConstPtr& msg);
 		void jntVelCB(const wam_msgs::RTJointVel::ConstPtr& msg);
 		void jntPosCB(const wam_msgs::RTJointPos::ConstPtr& msg);
 		void jntHandToolCB(const sensor_msgs::JointState::ConstPtr& msg); 
 		void cartPosCB(const wam_msgs::RTCartPos::ConstPtr& msg);
-		void vsErrCB(const std_msgs::Float32::ConstPtr& msg);
+		
 		void publishWam(ProductManager& pm);
 		void updateRT(ProductManager& pm);
-	};
+
+		/*
+		bool handInitialize(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+        bool handOpenGrasp(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+        bool handCloseGrasp(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+        bool handOpenSpread(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+        bool handCloseSpread(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+        bool handFingerPos(wam_srvs::BHandFingerPos::Request &req, wam_srvs::BHandFingerPos::Response &res);
+        bool handGraspPos(wam_srvs::BHandGraspPos::Request &req, wam_srvs::BHandGraspPos::Response &res);
+        bool handSpreadPos(wam_srvs::BHandSpreadPos::Request &req, wam_srvs::BHandSpreadPos::Response &res);
+        bool handPinchPos(wam_srvs::BHandPinchPos::Request &req, wam_srvs::BHandPinchPos::Response &res);
+        bool handFingerVel(wam_srvs::BHandFingerVel::Request &req, wam_srvs::BHandFingerVel::Response &res);
+        bool handGraspVel(wam_srvs::BHandGraspVel::Request &req, wam_srvs::BHandGraspVel::Response &res);
+        bool handSpreadVel(wam_srvs::BHandSpreadVel::Request &req, wam_srvs::BHandSpreadVel::Response &res);
+		void publishHand(void);
+		*/
+
+		
+};
