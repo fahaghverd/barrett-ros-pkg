@@ -30,6 +30,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   std_srvs
   tf
+  message_generation
   wam_msgs
   wam_srvs
 )

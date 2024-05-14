@@ -1,11 +1,11 @@
 <!-- fhaghverd Feb 24 -->
 
 <launch>
-	<node pkg="can_ros" type="can_ros" name="wrist" output="screen" respawn="true"/>
+	<node pkg="can_ros" type="wrist_node" name="wrist" output="screen" respawn="true"/>
 	
 	<group ns="leader"> 
 		<node pkg="wam_bringup" type="wam_node_teleop" name="wam" output="screen"> 
-			<env name="BARRETT_CONFIG_FILE" value="/home/wam/catkin_ws/src/barrett-ros-pkg/wam_bringup/launch/haptic_wrist_config/default_can0.conf"/>
+			<env name="BARRETT_CONFIG_FILE" value="/home/wam/catkin_ws/src/barrett-ros-pkg/wam_bringup/launch/haptic_wrist_config/default_can1.conf"/>
 		</node>
 	</group>
 	

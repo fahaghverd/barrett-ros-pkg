@@ -34,7 +34,8 @@
 template<size_t DOF>
 void WamNode<DOF>::init(ProductManager& pm) {
 
-    mm = NULL;
+    mmros = NULL;
+    mmudp = NULL;
     vhp = NULL;
     //Setting up real-time command timeouts and initial values
     rt_msg_timeout.fromSec(0.3); //rt_status will be determined false if rt message is not received in specified time
@@ -47,6 +48,8 @@ void WamNode<DOF>::init(ProductManager& pm) {
     jnt_vel_status = false;
     jnt_pos_status = false;
     systems_connected = false;  
+    jnt_hand_tool_status = false;
+    cart_pos_status = false;
     
     mypm = &pm;
     pm.getExecutionManager()->startManaging(ramp); // starting ramp manager
@@ -82,7 +85,7 @@ void WamNode<DOF>::init(ProductManager& pm) {
     cart_vel_sub = n_.subscribe("cart_vel_cmd", 1, &WamNode::cartVelCB, this);
     ortn_vel_sub = n_.subscribe("ortn_vel_cmd", 1, &WamNode::ortnVelCB, this);
     jnt_vel_sub = n_.subscribe("jnt_vel_cmd", 1, &WamNode::jntVelCB, this);
-    jnt_pos_sub = n_.subscribe("jnt_pos_cmd", 1, &WamNode::jntPosCB, this);
+    jnt_pos_sub = n_.subscribe("jnt_pos_cmd", 1, &WamNode::jntPosCB, this, ros::TransportHints().udp());
     jnt_hand_tool_sub = n_.subscribe("jnt_hand_tool_cmd", 1, &WamNode::jntHandToolCB, this);
     cart_pos_sub = n_.subscribe("cart_pos_cmd", 1, &WamNode::cartPosCB, this);
     
@@ -108,7 +111,8 @@ void WamNode<DOF>::init(ProductManager& pm) {
     ortn_move_srv = n_.advertiseService("ortn_move", &WamNode::ortnMove, this);
     teach_srv = n_.advertiseService("teach_motion", &WamNode::teachMotion, this);
     play_srv = n_.advertiseService("play_motion", &WamNode::playMotion, this);
-    link_arm_srv = n_.advertiseService("link_arm", &WamNode::linkArm, this);
+    link_arm_udp_srv = n_.advertiseService("link_arm_UDP", &WamNode::linkArmUDP, this);
+    link_arm_ros_srv = n_.advertiseService("link_arm_ROS", &WamNode::linkArmROS, this);
     unlink_arm_srv = n_.advertiseService("unlink_arm", &WamNode::unLinkArm, this);
 
 
@@ -565,6 +569,19 @@ bool WamNode<DOF>::gravity(wam_srvs::GravityComp::Request &req, wam_srvs::Gravit
     return true;
 }
 
+// // gravity_comp service callback
+// template<size_t DOF>
+// bool WamNode<DOF>::friction(wam_srvs::GravityComp::Request &req, wam_srvs::GravityComp::Response &res) {
+//     if(req.gravity){
+//         forceConnect(wam.jvOutput,frictionCompensate.input);
+//         forceConnect(frictionCompensate.output, wam.input);
+//     } else {
+//         disconnect(frictionCompensate.input);
+//     }
+//     ROS_INFO("Friction Compensation Request: %s", (req.gravity) ? "true" : "false");
+//     return true;
+// }
+
 // goHome Function for sending the WAM safely back to its home starting position.
 template<size_t DOF>
 bool WamNode<DOF>::goHome(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res) {
@@ -869,54 +886,57 @@ bool WamNode<DOF>::ortnMove(wam_srvs::OrtnMove::Request &req, wam_srvs::OrtnMove
 }
 
 
-
 template<size_t DOF>
-bool WamNode<DOF>::linkArm(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res) {
+bool WamNode<DOF>::linkArmUDP(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res) {
     //Setup master
-    if (mm == NULL) {
-        mm = new MasterMaster<DOF>(mypm->getExecutionManager(), const_cast<char*>(req.remote_ip.c_str()));
-        if(DOF == 7){
-            rt_hand_tool_cmd << 0.0, 0.0, 0.0, 0.0, 0.0, -0.01, -0.2 ; //CP: only last 3 joint are use for hand tool; the first joint set free mode if it is 1.0 or attached if it is different
-            exposedOutputHandTool.setValue(rt_hand_tool_cmd);
-        }
-        if(DOF == 4){
-            rt_hand_tool_cmd << 0.0, 0.0, 0.0, 0.0 ; //CP: only last 3 joint are use for hand tool; the first joint set free mode if it is 1.0 or attached if it is different
-            exposedOutputHandTool.setValue(rt_hand_tool_cmd);
-        }
-        systems::connect(wam.jpOutput, mm->JpInput);
-        systems::connect(exposedOutputHandTool.output, mm->JpHandTool);
-    }
-    //const jp_type SYNC_POS(0.0);  // the position each WAM should move    
-    
+    // if (mmudp == NULL) {
+    //     mmudp = new MasterMasterUDP<DOF>(mypm->getExecutionManager(), const_cast<char*>(req.remote_ip.c_str()));
+    //     //rt_hand_tool_cmd << 0.0, 0.0, 0.0, 0.0, 0.0, -0.01, -0.2 ; //CP: only last 3 joint are use for hand tool; the first joint set free mode if it is 1.0 or attached if it is different
+    //     exposedOutputHandTool.setValue(rt_hand_tool_cmd);
+    //     systems::connect(wam.jpOutput, mmudp->JpInput);
+    //     //systems::connect(exposedOutputHandTool.output, mmudp->JpHandTool);
+    // }
+    //const jp_type SYNC_POS(0.0);  // the position each WAM should move to before linking
     jp_type SYNC_POS;
-    if (DOF == 7) {
-    	SYNC_POS[0] = 0.0002921868167401221;
-    	SYNC_POS[1] = -1.9896138070413372;
-    	SYNC_POS[2] = -0.009396094148388157;
-    	SYNC_POS[3] = 3.054070527525429;
-    	SYNC_POS[4] = 0.0; 
-    	SYNC_POS[5] = 0.0; 
-    	SYNC_POS[6] = 0.0;
-    	
+	if (DOF == 7) {
+        SYNC_POS[0] = 0.0002921868167401221;
+        SYNC_POS[1] = -1.9896138070413372;
+        SYNC_POS[2] = -0.009396094148388157;
+        SYNC_POS[3] = 3.054070527525429;
+        SYNC_POS[4] = 0.0;
+        SYNC_POS[5] = 0.0;
+        SYNC_POS[6] = 0.0;
+
     } else if (DOF == 4) {
-    	SYNC_POS[0] = 0.0002921868167401221;
-    	SYNC_POS[1] = -1.9896138070413372;
-    	SYNC_POS[2] = -0.009396094148388157;
-    	SYNC_POS[3] = 3.054070527525429;
-    	
+        SYNC_POS[0] = 0.0002921868167401221;
+        SYNC_POS[1] = -1.9896138070413372;
+        SYNC_POS[2] = -0.009396094148388157;
+        SYNC_POS[3] = 3.054070527525429;
+
     } else {
-    	ROS_INFO_STREAM("WARNING: Linking was unsuccessful.\n");
-    	return false;
+        ROS_INFO_STREAM("WARNING: Linking was unsuccessful.\n");
+        return false;
     }
-    
+
+	if(DOF ==3){
+		ROS_INFO_STREAM("The program is not currently supported for the Proficios");
+		return 0;
+	}
+
     wam.gravityCompensate();
+	if (mmudp == NULL){
+        mmudp = new MasterMasterUDP<DOF>(mypm->getExecutionManager(), const_cast<char*>(req.remote_ip.c_str()));
+	    systems::connect(wam.jpOutput, mmudp->input);}
+
     wam.moveTo(SYNC_POS);
+
     ROS_INFO_STREAM("Press [Enter] to link with the other WAM.");
     waitForEnter();
-    mm->tryLink();
-    wam.trackReferenceSignal(mm->JpOutput);
+    mmudp->tryLink();
+    wam.trackReferenceSignal(mmudp->output);
+
     btsleep(0.1);  // wait an execution cycle or two
-    if (mm->isLinked()) {
+    if (mmudp->isLinked()) {
         ROS_INFO_STREAM("Linked with remote WAM.\n");
     } else {
         ROS_INFO_STREAM("WARNING: Linking was unsuccessful.\n");
@@ -925,9 +945,66 @@ bool WamNode<DOF>::linkArm(wam_srvs::Link::Request &req, wam_srvs::Link::Respons
 }
 
 template<size_t DOF>
+bool WamNode<DOF>::linkArmROS(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res) {
+    //Setup master
+    if (mmros == NULL) {
+        mmros = new MasterMasterROS<DOF>(mypm->getExecutionManager(), const_cast<char*>(req.remote_ip.c_str()));
+        if(DOF == 7){
+            rt_hand_tool_cmd << 0.0, 0.0, 0.0, 0.0, 0.0, -0.01, -0.2 ; //CP: only last 3 joint are use for hand tool; the first joint set free mode if it is 1.0 or attached if it is different
+            exposedOutputHandTool.setValue(rt_hand_tool_cmd);
+        }
+        if(DOF == 4){
+            rt_hand_tool_cmd << 0.0, 0.0, 0.0, 0.0 ; //CP: only last 3 joint are use for hand tool; the first joint set free mode if it is 1.0 or attached if it is different
+            exposedOutputHandTool.setValue(rt_hand_tool_cmd);
+        }
+        systems::connect(wam.jpOutput, mmros->JpInput);
+        systems::connect(exposedOutputHandTool.output, mmros->JpHandTool);
+    }
+    //const jp_type SYNC_POS(0.0);  // the position each WAM should move to before linking
+    jp_type SYNC_POS;
+    if (DOF == 7) {
+        SYNC_POS[0] = 0.0002921868167401221;
+        SYNC_POS[1] = -1.9896138070413372;
+        SYNC_POS[2] = -0.009396094148388157;
+        SYNC_POS[3] = 3.054070527525429;
+        SYNC_POS[4] = 0.0;
+        SYNC_POS[5] = 0.0;
+        SYNC_POS[6] = 0.0;
+
+    } else if (DOF == 4) {
+        SYNC_POS[0] = 0.0002921868167401221;
+        SYNC_POS[1] = -1.9896138070413372;
+        SYNC_POS[2] = -0.009396094148388157;
+        SYNC_POS[3] = 3.054070527525429;
+
+    } else {
+        ROS_INFO_STREAM("WARNING: Linking was unsuccessful.\n");
+        return false;
+    }
+
+    wam.gravityCompensate();
+    wam.moveTo(SYNC_POS);
+
+    ROS_INFO_STREAM("Press [Enter] to link with the other WAM.");
+    waitForEnter();
+    mmros->tryLink();
+
+    wam.trackReferenceSignal(mmros->JpOutput);
+    btsleep(0.1);  // wait an execution cycle or two
+
+    if (mmros->isLinked()) {
+        ROS_INFO_STREAM("Linked with remote WAM.\n");
+    } else {
+        ROS_INFO_STREAM("bWARNING: Linking was unsuccessful.\n");
+    }
+    return true;
+}
+
+template<size_t DOF>
 bool WamNode<DOF>::unLinkArm(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
 {
-    mm->unlink();
+    if (!(mmudp == NULL)) {mmudp->unlink();}
+    if (!(mmros == NULL)) {mmros->unlink();}
     wam.moveTo(wam.getJointPositions());
 
     return true;
@@ -1044,14 +1121,16 @@ void WamNode<DOF>::ortnVelCB(const wam_msgs::RTOrtnVel::ConstPtr& msg)
 //Callback function for RT Joint Velocity Messages
 template<size_t DOF>
 void WamNode<DOF>::jntVelCB(const wam_msgs::RTJointVel::ConstPtr& msg)
-{
+{   
+    
     if (msg->velocities.size() != DOF)
     {
         ROS_INFO("Commanded Joint Velocities != DOF of WAM");
         return;
     }
     if (jnt_vel_status)
-    {
+    {   
+        ROS_INFO("Recived Joint Vel");
         for (size_t i = 0; i < DOF; i++)
         {
             rt_jv_cmd[i] = msg->velocities[i];
@@ -1308,7 +1387,9 @@ void WamNode<DOF>::updateRT(ProductManager& pm) //systems::PeriodicDataLogger<de
             wam.trackReferenceSignal(jv_track.output); // command the WAM to track the RT commanded up to (500 Hz) joint velocities
         }
         else if (new_rt_cmd)
-        {
+        {   
+            ROS_INFO("Residamo residam!");
+            ROS_INFO_STREAM(rt_jv_cmd.transpose());
             jv_track.setValue(rt_jv_cmd); // set our joint velocity to subscribed command
         }
         jnt_vel_status = true;
@@ -1329,6 +1410,10 @@ void WamNode<DOF>::updateRT(ProductManager& pm) //systems::PeriodicDataLogger<de
         {
             jp_track.setValue(rt_jp_cmd); // set our joint position to subscribed command
             jp_rl.setLimit(rt_jp_rl); // set our rate limit to subscribed rate to control the rate of the moves
+        } else if (!new_rt_cmd && jnt_pos_status){
+            systems::disconnect(wam.input);
+            // ROS_INFO("missed RT msg!");
+            jnt_pos_status =false;
         }
         jnt_pos_status = true;
         new_rt_cmd = false;
@@ -1375,15 +1460,9 @@ void WamNode<DOF>::updateRT(ProductManager& pm) //systems::PeriodicDataLogger<de
     //If we fall out of 'Real-Time', hold joint positions
     else if (cart_vel_status | ortn_vel_status | jnt_vel_status | jnt_pos_status | jnt_hand_tool_status | cart_pos_status)
     {
-        if(jnt_hand_tool_status)
-        {
-        }
-        else
-        {
-            wam.moveTo(wam.getJointPositions()); // Holds current joint positions upon a RT message timeout
-            cart_vel_status = ortn_vel_status = jnt_vel_status = jnt_pos_status=jnt_hand_tool_status = cart_pos_status = ortn_pos_status = false;
-            ROS_WARN_STREAM("Fell out of RT control, holding joint positions");
-        }
+        wam.moveTo(wam.getJointPositions()); // Holds current joint positions upon a RT message timeout
+        cart_vel_status = ortn_vel_status = jnt_vel_status = jnt_pos_status=jnt_hand_tool_status = cart_pos_status = ortn_pos_status = false;
+        ROS_WARN_STREAM("Fell out of RT control, holding joint positions");
     }
 }
 
@@ -1430,6 +1509,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam)
         wam_node.publishWam(pm);
         wam_node.updateRT(pm);
         pub_rate.sleep();
+        
     }
     ROS_INFO_STREAM("wam node shutting down");
     return 0;

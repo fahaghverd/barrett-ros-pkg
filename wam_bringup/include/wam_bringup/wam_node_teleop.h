@@ -30,7 +30,8 @@
  */
 
 #include "wam_bringup/utilities.h"
-#include "wam_bringup/arm_linking.h"
+#include "wam_bringup/arm_linking_UDP.h"
+#include "wam_bringup/arm_linking_ROS.h"
 #include "wam_bringup/tool_force_application.h"
 #include "wam_bringup/visual_path_with_normals.h"
 #include "wam_bringup/path_normals_to_quaternion.h"
@@ -121,7 +122,7 @@
 #include <termios.h>
 
 
-static const int PUBLISH_FREQ = 250; // Default Control Loop / Publishing Frequency
+static const int PUBLISH_FREQ = 500; // Default Control Loop / Publishing Frequency
 static const int BHAND_PUBLISH_FREQ = 5; // Publishing Frequency for the BarretHand
 static const double SPEED = 0.03; // Default Cartesian Velocity
 
@@ -170,7 +171,7 @@ class WamNode
 		bool hand_available;
 		bool cart_vel_status; // real time control
 		bool ortn_vel_status; // real time control
-		bool jnt_vel_status; // real time control
+		
 		bool jnt_pos_status; // real time control
 		bool jnt_hand_tool_status; // real time control
 		bool cart_pos_status; // real time control
@@ -184,7 +185,8 @@ class WamNode
 		// Hand* hand;
 		VisualHapticPathNormals *vhp; // haptics 
 		applyForceToolFrame<DOF> appForce1; // force control
-		MasterMaster<DOF> *mm; // linking
+		MasterMasterROS<DOF> *mmros; // ROSlinking
+		MasterMasterUDP<DOF> *mmudp; // UDPlinking
 		tangentialVelocityCompute<DOF> computeTangentVel; // cartVel
 		OrientationControllerVariableGains<DOF> OrtnSplitCont;
 		systems::Wam<DOF>& wam;
@@ -213,6 +215,8 @@ class WamNode
 
 		pose_type pose_cmd;
 
+		//libconfig::Setting& setting;
+		//systems::FrictionCompensator<DOF> frictionCompensate;
 		// haptic sphere variables
         systems::HapticBall haptic_ball;
         systems::PIDController<double, double> pid_control_ball;
@@ -341,7 +345,8 @@ class WamNode
 		ros::ServiceServer ortn_split_move_srv;
 		ros::ServiceServer teach_srv;
 		ros::ServiceServer play_srv;
-		ros::ServiceServer link_arm_srv;
+		ros::ServiceServer link_arm_udp_srv;
+		ros::ServiceServer link_arm_ros_srv;
 		ros::ServiceServer unlink_arm_srv;
 		// LP control experiments
 		ros::ServiceServer jp_pid_srv;
@@ -387,6 +392,7 @@ class WamNode
 		*/
 
 	public:
+		bool jnt_vel_status; // real time control
 		ros::NodeHandle n_;
 		//ros::NodeHandle nb_; // BarrettHand specific nodehandle
 		ProductManager* mypm;
@@ -407,6 +413,8 @@ class WamNode
 			jtSat(boost::bind(saturateJt<DOF>, _1, jtLimits)), 
 			jtSat_cartVel(boost::bind(saturateJt<DOF>, _1, jtLimits)),
 			jtSat_ornSplit(boost::bind(saturateJt<DOF>, _1, jtLimits))
+		//	setting(pm.getConfig().lookup(pm.getWamDefaultConfigPath())),
+		//	frictionCompensate(setting["coulomb"], setting["viscous"])
 			// ImpControl(cp_type(100.0, 100.0, 100.0), cp_type(1.0, 1.0, 1.0), cp_type(0.0, 0.0, 0.0), cp_type(0.4, 0.0, 0.6), cp_type(0, 0.0, 0.0)),
         	// pub_rate(pub_freq), 
         	// baud(9600), 
@@ -455,7 +463,8 @@ class WamNode
 
 		bool teachMotion(wam_srvs::Teach::Request &req, wam_srvs::Teach::Response &res);
 		bool playMotion(wam_srvs::Play::Request &req, wam_srvs::Play::Response &res);
-		bool linkArm(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res);
+		bool linkArmUDP(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res);
+		bool linkArmROS(wam_srvs::Link::Request &req, wam_srvs::Link::Response &res);
 		bool unLinkArm(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 		void cartVelCB(const wam_msgs::RTCartVel::ConstPtr& msg);
 		void ortnVelCB(const wam_msgs::RTOrtnVel::ConstPtr& msg);
@@ -464,6 +473,8 @@ class WamNode
 		void jntHandToolCB(const sensor_msgs::JointState::ConstPtr& msg); 
 		void cartPosCB(const wam_msgs::RTCartPos::ConstPtr& msg);
 		
+		bool friction(wam_srvs::GravityComp::Request &req, wam_srvs::GravityComp::Response &res);
+
 		void publishWam(ProductManager& pm);
 		void updateRT(ProductManager& pm);
 

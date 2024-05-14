@@ -2,7 +2,7 @@
 
 <launch>
 	<!--<node pkg="wam_node" type="bhand_node" name="bhand" output="screen" respawn="false"/>-->
-	<env name="BARRETT_CONFIG_FILE" value="/home/wam/catkin_ws/src/barrett-ros-pkg/wam_bringup/launch/haptic_wrist_config/default_can0.conf"/>
+	<env name="BARRETT_CONFIG_FILE" value="/home/wam/catkin_ws/src/barrett-ros-pkg/wam_bringup/launch/haptic_wrist_config/default_can1.conf"/>
 	<group ns="leader"> 
 		<node pkg="wam_bringup" type="wam_node_teleop" name="wam" output="screen" respawn="true"/> 
 	</group>
